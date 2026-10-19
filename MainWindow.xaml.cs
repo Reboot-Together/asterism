@@ -66,6 +66,10 @@ public sealed partial class MainWindow : Window
             UIElement.PointerWheelChangedEvent,
             new PointerEventHandler(GraphCanvas_PointerWheelChanged),
             handledEventsToo: true);
+        PdfScroll.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(PdfScroll_PointerWheelChanged),
+            handledEventsToo: true);
         ConfigureTitleBar();
         _uiLayoutSettings = _uiLayoutSettingsService.Load();
         ApplyAppearanceSettings(refreshContent: false);

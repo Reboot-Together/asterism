@@ -20,16 +20,32 @@ public sealed partial class MainWindow
 {
     private enum PdfTool { Select, Text, Callout, Highlight }
 
+    private sealed class PdfPageSurfaceState
+    {
+        public required int PageIndex { get; init; }
+        public required double AspectRatio { get; init; }
+        public required Grid Surface { get; init; }
+        public required Image Image { get; init; }
+        public required Canvas Canvas { get; init; }
+        public bool IsRendering { get; set; }
+        public double RenderedZoom { get; set; } = -1;
+    }
+
     private readonly PdfAnnotationService _pdfAnnotationService = new();
     private bool _pdfMode;
     private string? _currentPdfPath;
     private PdfDocument? _openPdfDocument;
     private List<PdfAnnotation> _pdfAnnotations = [];
+    private readonly List<PdfPageSurfaceState> _pdfPageSurfaces = [];
     private PdfTool _pdfTool = PdfTool.Select;
     private int _pdfPageIndex;
     private double _pdfZoom = 1;
-    private bool _pdfPageRendering;
+    private bool _pdfVisibleRenderRunning;
+    private bool _pdfVisibleRenderRequested;
+    private int _pdfDocumentRevision;
     private Point? _pdfPointerStart;
+    private Canvas? _pdfPointerCanvas;
+    private int _pdfPointerPageIndex = -1;
     private Guid? _selectedPdfAnnotationId;
     private FrameworkElement? _pdfDrawingPreview;
 
@@ -155,8 +171,10 @@ public sealed partial class MainWindow
             var file = await StorageFile.GetFileFromPathAsync(_currentPdfPath);
             _openPdfDocument = await PdfDocument.LoadFromFileAsync(file);
             _pdfAnnotations = _pdfAnnotationService.Load(_currentPdfPath).Annotations;
+            _pdfDocumentRevision++;
             SetPdfTool(PdfTool.Select);
-            await RenderPdfPageAsync();
+            BuildPdfPageSurfaces();
+            await RenderVisiblePdfPagesAsync();
             PdfStatusText.Text = "주석은 PDF 원본을 바꾸지 않고 별도 저장됩니다.";
         }
         catch (Exception exception)
@@ -166,27 +184,117 @@ public sealed partial class MainWindow
         }
     }
 
-    private async Task RenderPdfPageAsync()
+    private void BuildPdfPageSurfaces()
     {
-        if (_openPdfDocument is null || _openPdfDocument.PageCount == 0 || _pdfPageRendering) return;
-        _pdfPageRendering = true;
+        PdfPagesHost.Children.Clear();
+        _pdfPageSurfaces.Clear();
+        if (_openPdfDocument is null) return;
+
+        var pageCount = checked((int)_openPdfDocument.PageCount);
+        for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
+        {
+            using var page = _openPdfDocument.GetPage((uint)pageIndex);
+            var image = new Image { Stretch = Stretch.Fill };
+            var canvas = new Canvas { Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)), Tag = pageIndex };
+            canvas.PointerPressed += PdfAnnotationCanvas_PointerPressed;
+            canvas.PointerMoved += PdfAnnotationCanvas_PointerMoved;
+            canvas.PointerReleased += PdfAnnotationCanvas_PointerReleased;
+            canvas.PointerCanceled += PdfAnnotationCanvas_PointerCanceled;
+            canvas.PointerCaptureLost += PdfAnnotationCanvas_PointerCanceled;
+            var surface = new Grid
+            {
+                Background = new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                UseLayoutRounding = true
+            };
+            surface.Children.Add(image);
+            surface.Children.Add(canvas);
+            var state = new PdfPageSurfaceState
+            {
+                PageIndex = pageIndex,
+                AspectRatio = page.Size.Height / page.Size.Width,
+                Surface = surface,
+                Image = image,
+                Canvas = canvas
+            };
+            _pdfPageSurfaces.Add(state);
+            PdfPagesHost.Children.Add(surface);
+        }
+
+        ResizePdfPageSurfaces();
+        PdfScroll.ChangeView(0, 0, null, true);
+        PdfScroll.UpdateLayout();
+        UpdatePdfCurrentPage();
+        DrawPdfAnnotations();
+    }
+
+    private void ResizePdfPageSurfaces()
+    {
+        var viewportWidth = PdfScroll.ViewportWidth > 120
+            ? PdfScroll.ViewportWidth - PdfScroll.Padding.Left - PdfScroll.Padding.Right
+            : PdfScroll.ActualWidth > 120 ? PdfScroll.ActualWidth - 64 : 920;
+        var displayWidth = Math.Clamp(viewportWidth, 560, 1080) * _pdfZoom;
+        foreach (var state in _pdfPageSurfaces)
+        {
+            var displayHeight = displayWidth * state.AspectRatio;
+            state.Surface.Width = displayWidth;
+            state.Surface.Height = displayHeight;
+            state.Image.Width = displayWidth;
+            state.Image.Height = displayHeight;
+            state.Canvas.Width = displayWidth;
+            state.Canvas.Height = displayHeight;
+        }
+        PdfZoomText.Text = $"{_pdfZoom:P0}";
+        DrawPdfAnnotations();
+    }
+
+    private async Task RenderVisiblePdfPagesAsync()
+    {
+        _pdfVisibleRenderRequested = true;
+        if (_pdfVisibleRenderRunning) return;
+        _pdfVisibleRenderRunning = true;
         try
         {
-            _pdfPageIndex = Math.Clamp(_pdfPageIndex, 0, checked((int)_openPdfDocument.PageCount) - 1);
-            using var page = _openPdfDocument.GetPage((uint)_pdfPageIndex);
-            var viewportWidth = PdfScroll.ActualWidth > 120 ? PdfScroll.ActualWidth - 64 : 920;
-            var baseWidth = Math.Clamp(viewportWidth, 560, 1080);
-            var displayWidth = baseWidth * _pdfZoom;
-            var displayHeight = displayWidth * page.Size.Height / page.Size.Width;
-            PdfPageSurface.Width = displayWidth;
-            PdfPageSurface.Height = displayHeight;
-            PdfPageImage.Width = displayWidth;
-            PdfPageImage.Height = displayHeight;
-            PdfAnnotationCanvas.Width = displayWidth;
-            PdfAnnotationCanvas.Height = displayHeight;
+            while (_pdfVisibleRenderRequested)
+            {
+                _pdfVisibleRenderRequested = false;
+                PdfScroll.UpdateLayout();
+                var viewport = Math.Max(480, PdfScroll.ViewportHeight);
+                var visibleTop = Math.Max(0, PdfScroll.VerticalOffset - viewport);
+                var visibleBottom = PdfScroll.VerticalOffset + viewport * 2;
+                var candidates = _pdfPageSurfaces.Where(state =>
+                {
+                    var top = PageTop(state);
+                    return top + state.Surface.Height >= visibleTop && top <= visibleBottom;
+                }).ToList();
+                var retainTop = Math.Max(0, PdfScroll.VerticalOffset - viewport * 2.5);
+                var retainBottom = PdfScroll.VerticalOffset + viewport * 3.5;
+                foreach (var state in _pdfPageSurfaces.Except(candidates))
+                {
+                    var top = PageTop(state);
+                    if (top + state.Surface.Height >= retainTop && top <= retainBottom) continue;
+                    state.Image.Source = null;
+                    state.RenderedZoom = -1;
+                }
+                foreach (var state in candidates) await RenderPdfPageSurfaceAsync(state);
+            }
+        }
+        finally { _pdfVisibleRenderRunning = false; }
+    }
 
-            var destinationWidth = (uint)Math.Clamp(Math.Round(displayWidth * 1.45), 1, 4096);
-            var destinationHeight = (uint)Math.Clamp(Math.Round(displayHeight * 1.45), 1, 5792);
+    private async Task RenderPdfPageSurfaceAsync(PdfPageSurfaceState state)
+    {
+        var document = _openPdfDocument;
+        var revision = _pdfDocumentRevision;
+        if (document is null || state.IsRendering || Math.Abs(state.RenderedZoom - _pdfZoom) < .001) return;
+        state.IsRendering = true;
+        var requestedZoom = _pdfZoom;
+        try
+        {
+            using var page = document.GetPage((uint)state.PageIndex);
+            var destinationWidth = (uint)Math.Clamp(Math.Round(state.Surface.Width * 1.45), 1, 4096);
+            var destinationHeight = (uint)Math.Clamp(Math.Round(state.Surface.Height * 1.45), 1, 5792);
             using var stream = new InMemoryRandomAccessStream();
             await page.RenderToStreamAsync(stream, new PdfPageRenderOptions
             {
@@ -196,21 +304,33 @@ public sealed partial class MainWindow
             stream.Seek(0);
             var bitmap = new BitmapImage();
             await bitmap.SetSourceAsync(stream);
-            PdfPageImage.Source = bitmap;
-            PdfPageText.Text = $"{_pdfPageIndex + 1} / {_openPdfDocument.PageCount}";
-            PdfZoomText.Text = $"{_pdfZoom:P0}";
-            DrawPdfAnnotations();
+            if (revision != _pdfDocumentRevision || !ReferenceEquals(document, _openPdfDocument)) return;
+            state.Image.Source = bitmap;
+            state.RenderedZoom = requestedZoom;
         }
-        finally { _pdfPageRendering = false; }
+        catch (Exception exception)
+        {
+            if (revision == _pdfDocumentRevision) PdfStatusText.Text = $"{state.PageIndex + 1}페이지를 표시하지 못했습니다: {exception.Message}";
+        }
+        finally { state.IsRendering = false; }
     }
+
+    private double PageTop(PdfPageSurfaceState state) =>
+        state.Surface.TransformToVisual(PdfPagesHost).TransformPoint(new Point()).Y;
 
     private void DrawPdfAnnotations()
     {
-        PdfAnnotationCanvas.Children.Clear();
-        var width = PdfAnnotationCanvas.Width;
-        var height = PdfAnnotationCanvas.Height;
+        foreach (var state in _pdfPageSurfaces) DrawPdfAnnotations(state);
+    }
+
+    private void DrawPdfAnnotations(PdfPageSurfaceState state)
+    {
+        var canvas = state.Canvas;
+        canvas.Children.Clear();
+        var width = canvas.Width;
+        var height = canvas.Height;
         if (width <= 0 || height <= 0) return;
-        foreach (var annotation in _pdfAnnotations.Where(item => item.PageIndex == _pdfPageIndex))
+        foreach (var annotation in _pdfAnnotations.Where(item => item.PageIndex == state.PageIndex))
         {
             var selected = annotation.Id == _selectedPdfAnnotationId;
             if (annotation.Kind == PdfAnnotationKind.Highlight)
@@ -226,11 +346,11 @@ public sealed partial class MainWindow
                 };
                 Canvas.SetLeft(mark, annotation.X * width);
                 Canvas.SetTop(mark, annotation.Y * height);
-                PdfAnnotationCanvas.Children.Add(mark);
+                canvas.Children.Add(mark);
             }
             else if (annotation.Kind == PdfAnnotationKind.Text)
             {
-                AddPdfTextCard(annotation, annotation.X * width, annotation.Y * height, selected);
+                AddPdfTextCard(canvas, annotation, annotation.X * width, annotation.Y * height, selected);
             }
             else
             {
@@ -252,8 +372,8 @@ public sealed partial class MainWindow
                 };
                 Canvas.SetLeft(outline, left);
                 Canvas.SetTop(outline, top);
-                PdfAnnotationCanvas.Children.Add(outline);
-                PdfAnnotationCanvas.Children.Add(new Line
+                canvas.Children.Add(outline);
+                canvas.Children.Add(new Line
                 {
                     X1 = left + markWidth / 2,
                     Y1 = top + markHeight / 2,
@@ -263,16 +383,16 @@ public sealed partial class MainWindow
                     StrokeThickness = selected ? 3 : 2,
                     IsHitTestVisible = false
                 });
-                AddPdfTextCard(annotation, targetX, targetY, selected);
+                AddPdfTextCard(canvas, annotation, targetX, targetY, selected);
             }
         }
     }
 
-    private void AddPdfTextCard(PdfAnnotation annotation, double left, double top, bool selected)
+    private void AddPdfTextCard(Canvas canvas, PdfAnnotation annotation, double left, double top, bool selected)
     {
         var card = new Border
         {
-            MaxWidth = Math.Max(150, PdfAnnotationCanvas.Width * .34),
+            MaxWidth = Math.Max(150, canvas.Width * .34),
             MinWidth = 96,
             Background = new SolidColorBrush(Color.FromArgb(235, 255, 250, 218)),
             BorderBrush = new SolidColorBrush(selected ? Color.FromArgb(255, 219, 124, 0) : Color.FromArgb(220, 222, 164, 52)),
@@ -289,9 +409,9 @@ public sealed partial class MainWindow
                 FontWeight = FontWeights.SemiBold
             }
         };
-        Canvas.SetLeft(card, Math.Clamp(left, 0, Math.Max(0, PdfAnnotationCanvas.Width - 110)));
-        Canvas.SetTop(card, Math.Clamp(top, 0, Math.Max(0, PdfAnnotationCanvas.Height - 44)));
-        PdfAnnotationCanvas.Children.Add(card);
+        Canvas.SetLeft(card, Math.Clamp(left, 0, Math.Max(0, canvas.Width - 110)));
+        Canvas.SetTop(card, Math.Clamp(top, 0, Math.Max(0, canvas.Height - 44)));
+        canvas.Children.Add(card);
     }
 
     private void PdfSelectTool_Click(object sender, RoutedEventArgs e) => SetPdfTool(PdfTool.Select);
@@ -317,42 +437,49 @@ public sealed partial class MainWindow
 
     private void PdfAnnotationCanvas_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (_openPdfDocument is null) return;
-        var point = e.GetCurrentPoint(PdfAnnotationCanvas).Position;
+        if (_openPdfDocument is null || sender is not Canvas canvas || canvas.Tag is not int pageIndex) return;
+        var point = e.GetCurrentPoint(canvas).Position;
+        _pdfPageIndex = pageIndex;
+        UpdatePdfPageText();
         if (_pdfTool == PdfTool.Select)
         {
-            _selectedPdfAnnotationId = FindPdfAnnotation(point)?.Id;
+            _selectedPdfAnnotationId = FindPdfAnnotation(canvas, pageIndex, point)?.Id;
             DrawPdfAnnotations();
             PdfStatusText.Text = _selectedPdfAnnotationId is null ? "선택된 주석이 없습니다." : "주석이 선택되었습니다.";
             return;
         }
         _pdfPointerStart = point;
-        PdfAnnotationCanvas.CapturePointer(e.Pointer);
+        _pdfPointerCanvas = canvas;
+        _pdfPointerPageIndex = pageIndex;
+        canvas.CapturePointer(e.Pointer);
         e.Handled = true;
     }
 
     private void PdfAnnotationCanvas_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (_pdfPointerStart is not Point start || _pdfTool == PdfTool.Text) return;
-        ShowPdfDrawingPreview(start, e.GetCurrentPoint(PdfAnnotationCanvas).Position);
+        if (_pdfPointerStart is not Point start || _pdfPointerCanvas is not Canvas canvas || !ReferenceEquals(sender, canvas) || _pdfTool == PdfTool.Text) return;
+        ShowPdfDrawingPreview(canvas, start, e.GetCurrentPoint(canvas).Position);
         e.Handled = true;
     }
 
     private async void PdfAnnotationCanvas_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (_pdfPointerStart is not Point start || _currentPdfPath is null) return;
-        var current = e.GetCurrentPoint(PdfAnnotationCanvas).Position;
+        if (_pdfPointerStart is not Point start || _pdfPointerCanvas is not Canvas canvas || _pdfPointerPageIndex < 0 || _currentPdfPath is null) return;
+        var pageIndex = _pdfPointerPageIndex;
+        var current = e.GetCurrentPoint(canvas).Position;
         _pdfPointerStart = null;
-        PdfAnnotationCanvas.ReleasePointerCapture(e.Pointer);
+        _pdfPointerCanvas = null;
+        _pdfPointerPageIndex = -1;
+        canvas.ReleasePointerCapture(e.Pointer);
         RemovePdfDrawingPreview();
         e.Handled = true;
-        var surfaceWidth = Math.Max(1, PdfAnnotationCanvas.Width);
-        var surfaceHeight = Math.Max(1, PdfAnnotationCanvas.Height);
+        var surfaceWidth = Math.Max(1, canvas.Width);
+        var surfaceHeight = Math.Max(1, canvas.Height);
         if (_pdfTool == PdfTool.Text)
         {
             var text = await PromptForPdfText("PDF 텍스트 추가", "페이지에 표시할 내용을 입력하세요.");
             if (text is null) return;
-            _pdfAnnotations.Add(new PdfAnnotation(Guid.NewGuid(), PdfAnnotationKind.Text, _pdfPageIndex,
+            _pdfAnnotations.Add(new PdfAnnotation(Guid.NewGuid(), PdfAnnotationKind.Text, pageIndex,
                 Clamp01(current.X / surfaceWidth), Clamp01(current.Y / surfaceHeight), .3, .08, 0, 0, text, DateTimeOffset.Now));
         }
         else
@@ -361,7 +488,7 @@ public sealed partial class MainWindow
             if (bounds.Width * surfaceWidth < 6 || bounds.Height * surfaceHeight < 6) return;
             if (_pdfTool == PdfTool.Highlight)
             {
-                _pdfAnnotations.Add(new PdfAnnotation(Guid.NewGuid(), PdfAnnotationKind.Highlight, _pdfPageIndex,
+                _pdfAnnotations.Add(new PdfAnnotation(Guid.NewGuid(), PdfAnnotationKind.Highlight, pageIndex,
                     bounds.X, bounds.Y, bounds.Width, bounds.Height, 0, 0, "", DateTimeOffset.Now));
             }
             else if (_pdfTool == PdfTool.Callout)
@@ -372,7 +499,7 @@ public sealed partial class MainWindow
                     ? Math.Min(.82, bounds.X + bounds.Width + .045)
                     : Math.Max(.03, bounds.X - .29);
                 var targetY = Math.Clamp(bounds.Y + bounds.Height / 2, .02, .94);
-                _pdfAnnotations.Add(new PdfAnnotation(Guid.NewGuid(), PdfAnnotationKind.Callout, _pdfPageIndex,
+                _pdfAnnotations.Add(new PdfAnnotation(Guid.NewGuid(), PdfAnnotationKind.Callout, pageIndex,
                     bounds.X, bounds.Y, bounds.Width, bounds.Height, targetX, targetY, text, DateTimeOffset.Now));
             }
         }
@@ -384,10 +511,12 @@ public sealed partial class MainWindow
     private void PdfAnnotationCanvas_PointerCanceled(object sender, PointerRoutedEventArgs e)
     {
         _pdfPointerStart = null;
+        _pdfPointerCanvas = null;
+        _pdfPointerPageIndex = -1;
         RemovePdfDrawingPreview();
     }
 
-    private void ShowPdfDrawingPreview(Point start, Point end)
+    private void ShowPdfDrawingPreview(Canvas canvas, Point start, Point end)
     {
         RemovePdfDrawingPreview();
         var preview = new Rectangle
@@ -402,22 +531,22 @@ public sealed partial class MainWindow
         };
         Canvas.SetLeft(preview, Math.Min(start.X, end.X));
         Canvas.SetTop(preview, Math.Min(start.Y, end.Y));
-        PdfAnnotationCanvas.Children.Add(preview);
+        canvas.Children.Add(preview);
         _pdfDrawingPreview = preview;
     }
 
     private void RemovePdfDrawingPreview()
     {
-        if (_pdfDrawingPreview is not null) PdfAnnotationCanvas.Children.Remove(_pdfDrawingPreview);
+        if (_pdfDrawingPreview?.Parent is Panel parent) parent.Children.Remove(_pdfDrawingPreview);
         _pdfDrawingPreview = null;
     }
 
-    private PdfAnnotation? FindPdfAnnotation(Point point)
+    private PdfAnnotation? FindPdfAnnotation(Canvas canvas, int pageIndex, Point point)
     {
-        var x = point.X / Math.Max(1, PdfAnnotationCanvas.Width);
-        var y = point.Y / Math.Max(1, PdfAnnotationCanvas.Height);
+        var x = point.X / Math.Max(1, canvas.Width);
+        var y = point.Y / Math.Max(1, canvas.Height);
         const double tolerance = .012;
-        return _pdfAnnotations.Where(item => item.PageIndex == _pdfPageIndex).OrderByDescending(item => item.CreatedAt)
+        return _pdfAnnotations.Where(item => item.PageIndex == pageIndex).OrderByDescending(item => item.CreatedAt)
             .FirstOrDefault(item => item.Kind switch
             {
                 PdfAnnotationKind.Text => x >= item.X - tolerance && x <= item.X + .31 && y >= item.Y - tolerance && y <= item.Y + .1,
@@ -476,33 +605,122 @@ public sealed partial class MainWindow
 
     private async void PdfPreviousPage_Click(object sender, RoutedEventArgs e)
     {
-        if (_openPdfDocument is null || _pdfPageRendering || _pdfPageIndex <= 0) return;
-        _pdfPageIndex--;
+        if (_openPdfDocument is null || _pdfPageIndex <= 0) return;
         _selectedPdfAnnotationId = null;
-        await RenderPdfPageAsync();
+        ScrollToPdfPage(_pdfPageIndex - 1);
+        await RenderVisiblePdfPagesAsync();
     }
 
     private async void PdfNextPage_Click(object sender, RoutedEventArgs e)
     {
-        if (_openPdfDocument is null || _pdfPageRendering || _pdfPageIndex + 1 >= _openPdfDocument.PageCount) return;
-        _pdfPageIndex++;
+        if (_openPdfDocument is null || _pdfPageIndex + 1 >= _openPdfDocument.PageCount) return;
         _selectedPdfAnnotationId = null;
-        await RenderPdfPageAsync();
+        ScrollToPdfPage(_pdfPageIndex + 1);
+        await RenderVisiblePdfPagesAsync();
     }
 
     private async void PdfZoomOut_Click(object sender, RoutedEventArgs e)
     {
-        if (_pdfPageRendering) return;
-        _pdfZoom = Math.Max(.5, _pdfZoom - .25);
-        await RenderPdfPageAsync();
+        await ApplyPdfZoomAsync(Math.Max(.5, _pdfZoom - .25), PdfViewportCenter());
     }
 
     private async void PdfZoomIn_Click(object sender, RoutedEventArgs e)
     {
-        if (_pdfPageRendering) return;
-        _pdfZoom = Math.Min(4, _pdfZoom + .25);
-        await RenderPdfPageAsync();
+        await ApplyPdfZoomAsync(Math.Min(4, _pdfZoom + .25), PdfViewportCenter());
     }
+
+    private async void PdfScroll_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_pdfMode || _openPdfDocument is null || !IsPdfControlKeyDown()) return;
+        var wheelDelta = e.GetCurrentPoint(PdfScroll).Properties.MouseWheelDelta;
+        if (wheelDelta == 0) return;
+        e.Handled = true;
+        var pointerInViewport = e.GetCurrentPoint(PdfScroll).Position;
+        await ApplyPdfZoomAsync(Math.Clamp(_pdfZoom + (wheelDelta > 0 ? .25 : -.25), .5, 4), pointerInViewport);
+    }
+
+    private async void PdfScroll_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (!_pdfMode) return;
+        UpdatePdfCurrentPage();
+        await RenderVisiblePdfPagesAsync();
+    }
+
+    private async Task ApplyPdfZoomAsync(double nextZoom, Point viewportAnchor)
+    {
+        if (_openPdfDocument is null || Math.Abs(nextZoom - _pdfZoom) < .001 || _pdfPageSurfaces.Count == 0) return;
+        PdfScroll.UpdateLayout();
+        var anchor = FindPdfZoomAnchor(viewportAnchor);
+        _pdfZoom = nextZoom;
+        ResizePdfPageSurfaces();
+        PdfScroll.UpdateLayout();
+
+        if (anchor.State is not null)
+        {
+            var pageLeft = anchor.State.Surface.TransformToVisual(PdfPagesHost).TransformPoint(new Point()).X;
+            var pageTop = PageTop(anchor.State);
+            var horizontal = PdfScroll.Padding.Left + pageLeft + anchor.RelativeX * anchor.State.Surface.Width - viewportAnchor.X;
+            var vertical = PdfScroll.Padding.Top + pageTop + anchor.RelativeY * anchor.State.Surface.Height - viewportAnchor.Y;
+            PdfScroll.ChangeView(
+                Math.Clamp(horizontal, 0, PdfScroll.ScrollableWidth),
+                Math.Clamp(vertical, 0, PdfScroll.ScrollableHeight),
+                null,
+                true);
+        }
+
+        await RenderVisiblePdfPagesAsync();
+    }
+
+    private (PdfPageSurfaceState? State, double RelativeX, double RelativeY) FindPdfZoomAnchor(Point viewportPoint)
+    {
+        if (_pdfPageSurfaces.Count == 0) return (null, .5, .5);
+        var contentY = PdfScroll.VerticalOffset + viewportPoint.Y - PdfScroll.Padding.Top;
+        var state = _pdfPageSurfaces.FirstOrDefault(candidate =>
+        {
+            var top = PageTop(candidate);
+            return contentY >= top && contentY <= top + candidate.Surface.Height;
+        }) ?? _pdfPageSurfaces.MinBy(candidate => Math.Abs(contentY - (PageTop(candidate) + candidate.Surface.Height / 2)))!;
+        var pagePoint = PdfScroll.TransformToVisual(state.Surface).TransformPoint(viewportPoint);
+        return (
+            state,
+            Clamp01(pagePoint.X / Math.Max(1, state.Surface.Width)),
+            Clamp01(pagePoint.Y / Math.Max(1, state.Surface.Height)));
+    }
+
+    private Point PdfViewportCenter() => new(
+        Math.Max(0, PdfScroll.ViewportWidth / 2),
+        Math.Max(0, PdfScroll.ViewportHeight / 2));
+
+    private void ScrollToPdfPage(int pageIndex)
+    {
+        if (_pdfPageSurfaces.Count == 0) return;
+        _pdfPageIndex = Math.Clamp(pageIndex, 0, _pdfPageSurfaces.Count - 1);
+        var state = _pdfPageSurfaces[_pdfPageIndex];
+        PdfScroll.ChangeView(
+            PdfScroll.HorizontalOffset,
+            Math.Clamp(PdfScroll.Padding.Top + PageTop(state), 0, PdfScroll.ScrollableHeight),
+            null,
+            false);
+        UpdatePdfPageText();
+    }
+
+    private void UpdatePdfCurrentPage()
+    {
+        if (_pdfPageSurfaces.Count == 0) return;
+        var centerY = PdfScroll.VerticalOffset + PdfScroll.ViewportHeight / 2 - PdfScroll.Padding.Top;
+        _pdfPageIndex = _pdfPageSurfaces
+            .MinBy(state => Math.Abs(centerY - (PageTop(state) + state.Surface.Height / 2)))!
+            .PageIndex;
+        UpdatePdfPageText();
+    }
+
+    private void UpdatePdfPageText() =>
+        PdfPageText.Text = _openPdfDocument is null ? "0 / 0" : $"{_pdfPageIndex + 1} / {_openPdfDocument.PageCount}";
+
+    private static bool IsPdfControlKeyDown() =>
+        IsKeyDown(Windows.System.VirtualKey.Control)
+        || IsKeyDown(Windows.System.VirtualKey.LeftControl)
+        || IsKeyDown(Windows.System.VirtualKey.RightControl);
 
     private void OpenPdfExternally_Click(object sender, RoutedEventArgs e)
     {
@@ -531,9 +749,14 @@ public sealed partial class MainWindow
         _currentPdfPath = null;
         PdfTitleText.Text = "PDF";
         PdfStatusText.Text = "";
-        PdfPageImage.Source = null;
-        PdfAnnotationCanvas.Children.Clear();
+        _pdfDocumentRevision++;
+        foreach (var state in _pdfPageSurfaces) state.Image.Source = null;
+        PdfPagesHost.Children.Clear();
+        _pdfPageSurfaces.Clear();
         _pdfAnnotations = [];
+        _pdfPointerStart = null;
+        _pdfPointerCanvas = null;
+        _pdfPointerPageIndex = -1;
         _openPdfDocument = null;
     }
 

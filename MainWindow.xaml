@@ -273,16 +273,8 @@
                 <Button Grid.Column="9" Content="＋" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Click="PdfZoomIn_Click" ToolTipService.ToolTip="확대" />
                 <Button Grid.Column="10" Content="원본 열기" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="OpenPdfExternally_Click" ToolTipService.ToolTip="기본 PDF 앱에서 검색·인쇄" />
               </Grid>
-              <ScrollViewer x:Name="PdfScroll" Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Center" VerticalContentAlignment="Top" Padding="24" Background="{StaticResource AppBackground}">
-                <Grid x:Name="PdfPageSurface" Background="White" HorizontalAlignment="Center" VerticalAlignment="Top">
-                  <Image x:Name="PdfPageImage" Stretch="Fill" />
-                  <Canvas x:Name="PdfAnnotationCanvas" Background="Transparent"
-                          PointerPressed="PdfAnnotationCanvas_PointerPressed"
-                          PointerMoved="PdfAnnotationCanvas_PointerMoved"
-                          PointerReleased="PdfAnnotationCanvas_PointerReleased"
-                          PointerCanceled="PdfAnnotationCanvas_PointerCanceled"
-                          PointerCaptureLost="PdfAnnotationCanvas_PointerCanceled" />
-                </Grid>
+              <ScrollViewer x:Name="PdfScroll" Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Center" VerticalContentAlignment="Top" Padding="24" Background="{StaticResource AppBackground}" ViewChanged="PdfScroll_ViewChanged">
+                <StackPanel x:Name="PdfPagesHost" Spacing="22" HorizontalAlignment="Center" VerticalAlignment="Top" />
               </ScrollViewer>
             </Grid>
           </Border>
