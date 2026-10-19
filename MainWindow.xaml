@@ -256,7 +256,35 @@
             <Button Grid.Column="3" Content="닫기" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ClosePdf_Click" />
           </Grid>
           <Border Grid.Row="1" BorderBrush="{StaticResource CardBorder}" BorderThickness="1,1,0,0">
-            <WebView2 x:Name="PdfReader" DefaultBackgroundColor="#1E1E1E" NavigationCompleted="PdfReader_NavigationCompleted" />
+            <Grid RowDefinitions="Auto,*" Background="{StaticResource AppBackground}">
+              <Grid Padding="14,8" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6" Background="{StaticResource DocumentBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1">
+                <Button x:Name="PdfSelectToolButton" Grid.Column="0" Content="선택" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="PdfSelectTool_Click" ToolTipService.ToolTip="주석을 선택하거나 지웁니다" />
+                <Button x:Name="PdfTextToolButton" Grid.Column="1" Content="텍스트" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="PdfTextTool_Click" ToolTipService.ToolTip="페이지를 클릭해 텍스트 추가" />
+                <Button x:Name="PdfCalloutToolButton" Grid.Column="2" Content="□ 설명" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="PdfCalloutTool_Click" ToolTipService.ToolTip="사각형을 그리고 지시선이 있는 설명 추가" />
+                <Button x:Name="PdfHighlightToolButton" Grid.Column="3" Content="하이라이터" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="PdfHighlightTool_Click" ToolTipService.ToolTip="드래그하여 강조 표시" />
+                <Button Grid.Column="4" Content="실행 취소" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="PdfUndo_Click" />
+                <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <Button Content="‹" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Click="PdfPreviousPage_Click" ToolTipService.ToolTip="이전 페이지" />
+                  <TextBlock x:Name="PdfPageText" Text="0 / 0" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" MinWidth="54" TextAlignment="Center" />
+                  <Button Content="›" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Click="PdfNextPage_Click" ToolTipService.ToolTip="다음 페이지" />
+                </StackPanel>
+                <Button Grid.Column="7" Content="−" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Click="PdfZoomOut_Click" ToolTipService.ToolTip="축소" />
+                <TextBlock x:Name="PdfZoomText" Grid.Column="8" Text="100%" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" MinWidth="42" TextAlignment="Center" />
+                <Button Grid.Column="9" Content="＋" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Click="PdfZoomIn_Click" ToolTipService.ToolTip="확대" />
+                <Button Grid.Column="10" Content="원본 열기" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="OpenPdfExternally_Click" ToolTipService.ToolTip="기본 PDF 앱에서 검색·인쇄" />
+              </Grid>
+              <ScrollViewer x:Name="PdfScroll" Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Center" VerticalContentAlignment="Top" Padding="24" Background="{StaticResource AppBackground}">
+                <Grid x:Name="PdfPageSurface" Background="White" HorizontalAlignment="Center" VerticalAlignment="Top">
+                  <Image x:Name="PdfPageImage" Stretch="Fill" />
+                  <Canvas x:Name="PdfAnnotationCanvas" Background="Transparent"
+                          PointerPressed="PdfAnnotationCanvas_PointerPressed"
+                          PointerMoved="PdfAnnotationCanvas_PointerMoved"
+                          PointerReleased="PdfAnnotationCanvas_PointerReleased"
+                          PointerCanceled="PdfAnnotationCanvas_PointerCanceled"
+                          PointerCaptureLost="PdfAnnotationCanvas_PointerCanceled" />
+                </Grid>
+              </ScrollViewer>
+            </Grid>
           </Border>
         </Grid>
       </Border>

@@ -6,10 +6,10 @@
     <RootNamespace>AsterismApp</RootNamespace>
     <AssemblyName>Asterism</AssemblyName>
     <Product>Asterism</Product>
-    <Version>0.1.36</Version>
-    <AssemblyVersion>0.1.36.0</AssemblyVersion>
-    <FileVersion>0.1.36.0</FileVersion>
-    <InformationalVersion>0.1.36</InformationalVersion>
+    <Version>0.1.37</Version>
+    <AssemblyVersion>0.1.37.0</AssemblyVersion>
+    <FileVersion>0.1.37.0</FileVersion>
+    <InformationalVersion>0.1.37</InformationalVersion>
     <ApplicationIcon>Assets\Asterism.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>

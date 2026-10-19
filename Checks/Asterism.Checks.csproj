@@ -8,6 +8,7 @@
     <Compile Include="..\Rendering\MarkdownHeadingLevelService.cs" Link="MarkdownHeadingLevelService.cs" />
     <Compile Include="..\Features\Documents\PdfReaderRules.cs" Link="PdfReaderRules.cs" />
     <Compile Include="..\Features\Documents\PdfDocumentService.cs" Link="PdfDocumentService.cs" />
+    <Compile Include="..\Features\Documents\PdfAnnotationService.cs" Link="PdfAnnotationService.cs" />
     <Compile Include="..\Features\Documents\TextDocumentService.cs" Link="TextDocumentService.cs" />
     <Compile Include="..\Features\Semantic\SemanticTextChunker.cs" Link="SemanticTextChunker.cs" />
     <Compile Include="..\Features\Semantic\LocalEmbeddingModel.cs" Link="LocalEmbeddingModel.cs" />

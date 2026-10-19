@@ -214,9 +214,20 @@ try
     var importedPdf = pdfService.Import(pdfSource, pdfRoot);
     if (!File.Exists(importedPdf.Path) || pdfService.Load().Single().Title != "외부 자료")
         throw new Exception("PDF 저장소 가져오기 및 검색 실패");
+    var annotationService = new PdfAnnotationService();
+    var savedAnnotation = new PdfAnnotation(
+        Guid.NewGuid(), PdfAnnotationKind.Callout, 2,
+        .1, .2, .3, .1, .6, .25, "검토 필요", DateTimeOffset.UtcNow);
+    annotationService.Save(importedPdf.Path, [savedAnnotation]);
+    if (annotationService.Load(importedPdf.Path).Annotations.Single() != savedAnnotation)
+        throw new Exception("PDF 비파괴 주석 저장 및 복원 실패");
     var pdfFolder = Directory.CreateDirectory(Path.Combine(pdfRoot, "PDF 폴더")).FullName;
     var movedPdf = pdfService.Move(importedPdf.Path, pdfFolder);
     var renamedPdf = pdfService.Rename(movedPdf.Path, "강의 자료");
+    if (File.Exists(PdfAnnotationService.SidecarPath(importedPdf.Path))
+        || File.Exists(PdfAnnotationService.SidecarPath(movedPdf.Path))
+        || annotationService.Load(renamedPdf.Path).Annotations.Single() != savedAnnotation)
+        throw new Exception("PDF 이동·이름 변경 시 주석 동반 이동 실패");
     var pdfFolders = treeService.LoadFolders(pdfRoot);
     var pdfItems = treeService.Build(
         pdfRoot,

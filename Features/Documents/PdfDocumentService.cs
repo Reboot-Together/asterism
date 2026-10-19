@@ -6,6 +6,8 @@ namespace AsterismApp;
 
 public sealed class PdfDocumentService
 {
+    private readonly PdfAnnotationService _annotationService = new();
+
     public PdfDocumentService(string rootPath) => SetRootPath(rootPath);
 
     public string RootPath { get; private set; } = "";
@@ -58,7 +60,7 @@ public sealed class PdfDocumentService
             return Read(source);
 
         var destination = UniqueDestination(destinationFolder, Path.GetFileName(source));
-        File.Move(source, destination);
+        MovePdfWithSidecar(source, destination);
         return Read(destination);
     }
 
@@ -70,7 +72,7 @@ public sealed class PdfDocumentService
         var destination = Path.Combine(Path.GetDirectoryName(source)!, name + ".pdf");
         if (destination.Equals(source, StringComparison.OrdinalIgnoreCase)) return Read(source);
         if (File.Exists(destination)) throw new IOException("같은 이름의 PDF 파일이 이미 있습니다.");
-        File.Move(source, destination);
+        MovePdfWithSidecar(source, destination);
         return Read(destination);
     }
 
@@ -78,6 +80,7 @@ public sealed class PdfDocumentService
     {
         var source = ValidatePdfPath(path);
         if (!File.Exists(source)) return;
+        var sidecar = PdfAnnotationService.SidecarPath(source);
         try
         {
             FileSystem.DeleteFile(source, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
@@ -90,6 +93,18 @@ public sealed class PdfDocumentService
                 trashDirectory,
                 $"{Path.GetFileNameWithoutExtension(source)} {DateTime.Now:yyyyMMdd-HHmmssfff}.pdf");
             File.Move(source, destination);
+            _annotationService.MoveSidecar(source, destination);
+            return;
+        }
+
+        if (!File.Exists(sidecar)) return;
+        try
+        {
+            FileSystem.DeleteFile(sidecar, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+        }
+        catch
+        {
+            _annotationService.DeleteSidecar(source);
         }
     }
 
@@ -97,6 +112,20 @@ public sealed class PdfDocumentService
         Path.GetFileNameWithoutExtension(path),
         Path.GetFullPath(path),
         File.GetLastWriteTime(path));
+
+    private void MovePdfWithSidecar(string source, string destination)
+    {
+        File.Move(source, destination);
+        try
+        {
+            _annotationService.MoveSidecar(source, destination);
+        }
+        catch
+        {
+            if (!File.Exists(source) && File.Exists(destination)) File.Move(destination, source);
+            throw;
+        }
+    }
 
     private string ValidatePdfPath(string path)
     {
