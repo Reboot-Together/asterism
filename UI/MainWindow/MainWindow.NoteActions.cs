@@ -111,7 +111,7 @@ public sealed partial class MainWindow
         if (title is null || title.Equals(note.Title, StringComparison.Ordinal)) return;
         try
         {
-            var renamed = note.IsPlainText
+            var renamed = note.IsNotebook ? _notebookRepository.Rename(note.Path, title) : note.IsPlainText
                 ? _textRepository.Rename(note.Path, title)
                 : _repository.Rename(note.Path, title);
             _vaultTreeService.RemapOrderPath(_workspace.RootPath, note.Path, renamed.Path);
@@ -132,8 +132,8 @@ public sealed partial class MainWindow
 
         var confirmation = new ContentDialog
         {
-            Title = note.IsPlainText ? "TXT 삭제" : "노트 삭제",
-            Content = $"'{note.Title}' {(note.IsPlainText ? "TXT 파일" : "노트")}을 삭제할까요?\n\n가능하면 Windows 휴지통으로 이동하며, 휴지통을 지원하지 않는 저장소에서는 볼트의 .trash 폴더로 이동합니다.",
+            Title = "자료 삭제",
+            Content = $"'{note.Title}' 자료를 삭제할까요?\n\n가능하면 Windows 휴지통으로 이동하며, 휴지통을 지원하지 않는 저장소에서는 볼트의 .trash 폴더로 이동합니다.",
             PrimaryButtonText = "삭제",
             CloseButtonText = "취소",
             DefaultButton = ContentDialogButton.Close,
@@ -146,7 +146,8 @@ public sealed partial class MainWindow
             _saveTimer.Stop();
             _loading = true;
             _selected = null;
-            if (note.IsPlainText) _textRepository.MoveToTrash(note.Path);
+            if (note.IsNotebook) _notebookRepository.MoveToTrash(note.Path);
+            else if (note.IsPlainText) _textRepository.MoveToTrash(note.Path);
             else _repository.MoveToTrash(note.Path);
             _vaultTreeService.RemoveOrderPath(_workspace.RootPath, note.Path);
             _loading = false;
@@ -173,7 +174,8 @@ public sealed partial class MainWindow
         }
 
         NoteInfo copy;
-        if (note.IsPlainText)
+        if (note.IsNotebook) copy = _notebookRepository.Duplicate(note.Path);
+        else if (note.IsPlainText)
         {
             copy = _textRepository.Create(Path.GetDirectoryName(note.Path)!, $"{note.Title} 복사본");
             copy = _textRepository.Save(copy.Path, note.Body);
@@ -199,7 +201,7 @@ public sealed partial class MainWindow
 
         try
         {
-            var moved = note.IsPlainText
+            var moved = note.IsNotebook ? _notebookRepository.Move(note.Path, folder.Path) : note.IsPlainText
                 ? _textRepository.Move(note.Path, folder.Path)
                 : _repository.Move(note.Path, folder.Path);
             _vaultTreeService.RemapOrderPath(_workspace.RootPath, note.Path, moved.Path);
@@ -246,6 +248,7 @@ public sealed partial class MainWindow
         _workspace.SetRootPath(folder.Path);
         _repository.SetRootPath(folder.Path);
         _textRepository.SetRootPath(folder.Path);
+        _notebookRepository.SetRootPath(folder.Path);
         _pdfRepository.SetRootPath(folder.Path);
         _expandedFolders.Clear();
         _folderExpansionInitialized = false;

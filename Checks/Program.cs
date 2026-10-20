@@ -56,6 +56,8 @@ var root = Path.Combine(Path.GetTempPath(), "graph-notes-check-" + Guid.NewGuid(
 Directory.CreateDirectory(root);
 try
 {
+    NotebookChecks.Run(root);
+    if (args is ["--notebooks"]) return;
     var uiSettingsPath = Path.Combine(root, "ui-layout.json");
     var uiSettingsService = new UiLayoutSettingsService(uiSettingsPath);
     if (uiSettingsService.Load() != UiLayoutSettings.Default) throw new Exception("UI 배치 기본값 로드 실패");

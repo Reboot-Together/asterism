@@ -103,7 +103,7 @@ public sealed partial class MainWindow
 
     private void SemanticSuggestionLink_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || sender is not Button { Tag: string path }) return;
+        if (_selected is null || _selected.IsReadOnly || sender is not Button { Tag: string path }) return;
         var target = _notes.FirstOrDefault(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (target is null || target.Path == _selected.Path || _linkService.ExtractTargets(Editor.Text).Contains(target.Title)) return;
 

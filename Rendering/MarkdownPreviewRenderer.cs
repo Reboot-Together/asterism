@@ -90,6 +90,14 @@ public static class MarkdownPreviewRenderer
         """;
     }
 
+    public static string RenderNotebook(string path, string vaultPath, double scrollY = 0,
+        double fontScale = 1, string accentColor = "#D1AF61", string surfaceTheme = "dark")
+    {
+        var body = NotebookPreviewRenderer.RenderBody(NotebookDocumentService.ReadDocument(path), vaultPath, path);
+        if (!Regex.IsMatch(accentColor, "^#[0-9a-fA-F]{6}$")) accentColor = "#D1AF61";
+        return HtmlShell(body, null, scrollY, Math.Clamp(fontScale, .8, 1.4), accentColor, surfaceTheme, null);
+    }
+
     private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth, PreviewEditSession? editSession = null)
     {
         markdown = MarkdownText.NormalizeNewlines(markdown);
@@ -411,6 +419,7 @@ public static class MarkdownPreviewRenderer
             .source-hover{outline:1px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:3px;border-radius:3px;cursor:text}
             .editable-text{cursor:text}.inline-text-input{font:inherit;color:inherit;background:var(--card);border:1px solid var(--accent);border-radius:3px;padding:2px 4px;max-width:100%;outline:none}.inline-edit-help{position:fixed;bottom:10px;left:10px;z-index:100;background:var(--card);color:var(--primary);border:1px solid var(--border);border-radius:5px;padding:6px 10px;font:12px 'Segoe UI',sans-serif}
             pre.text-diagram{padding:18px 20px;max-width:100%;overflow-x:auto;white-space:pre;overflow-wrap:normal;word-break:normal;tab-size:4}pre.text-diagram::before{content:none}pre.text-diagram code{font-family:'D2Coding','NanumGothicCoding','Cascadia Mono','Consolas','GulimChe',monospace;font-size:calc(10.5px * var(--font-scale));line-height:1.6;font-variant-ligatures:none;letter-spacing:0;white-space:pre;overflow-wrap:normal;word-break:normal}.diagram-connector{color:var(--secondary)}.diagram-wide{display:inline-block;text-align:center}
+            .notebook-info,.notebook-prompt{color:var(--secondary);font-size:calc(9px * var(--font-scale));margin:0 0 12px}.notebook-cell{margin:20px 0;padding:0 0 18px;border-bottom:1px solid var(--border)}.notebook-cell>pre{white-space:pre;overflow-wrap:normal}.notebook-cell img{display:block;max-width:100%;height:auto}.notebook-output{padding:14px 16px;background:var(--card);white-space:pre!important;font-family:'Cascadia Mono','Consolas',monospace;overflow:auto}.notebook-output::before{content:none}.notebook-error{color:#D47878}.notebook-html-output{width:100%;height:320px;max-height:55vh;border:1px solid var(--border);border-radius:6px;background:white}
             @media(max-width:700px){body{padding:18px 20px 56px}table{font-size:calc(8.4px * var(--font-scale))}th,td{padding:7px 6px}.md-section>.md-section-body{padding-left:17px} }
           </style>
         </head>

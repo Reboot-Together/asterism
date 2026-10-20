@@ -39,9 +39,11 @@ internal sealed class WebViewHtmlUpdater
     {
         if (_pendingHtml is null) return;
         var html = _pendingHtml;
-        _pendingHtml = null;
+        // NavigateToString has a 2 MB limit; notebook plots can exceed it.
+        // Initialize a small document, then write the complete page through JS.
+        _pendingHtml = html.Length > 1_000_000 ? html : null;
         _navigationPending = true;
-        _view.NavigateToString(html);
+        _view.NavigateToString(_pendingHtml is null ? html : "<!doctype html><html><head><meta charset=\"utf-8\"></head><body></body></html>");
     }
 
     private void NavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
@@ -76,8 +78,8 @@ internal sealed class WebViewHtmlUpdater
                 {
                     // Recover with a normal navigation if the current script context disappeared.
                     _documentReady = false;
-                    _navigationPending = true;
-                    _view.NavigateToString(html);
+                    _pendingHtml = html;
+                    NavigatePendingDocument();
                 }
             }
         }

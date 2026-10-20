@@ -99,8 +99,8 @@ public sealed partial class SideDocumentPane : UserControl
         TitleBox.IsReadOnly = note.IsReadOnly;
         TitleBox.IsHitTestVisible = !note.IsReadOnly;
         TitleBox.IsTabStop = !note.IsReadOnly;
-        DocumentKindText.Text = note.IsReadOnly ? "GUIDE" : note.IsPlainText ? "SIDE TEXT" : "SIDE NOTE";
-        StatusText.Text = note.IsReadOnly ? "읽기 전용 · 앱과 함께 자동 업데이트" : "";
+        DocumentKindText.Text = note.IsNotebook ? "IPYNB" : note.IsReadOnly ? "GUIDE" : note.IsPlainText ? "SIDE TEXT" : "SIDE NOTE";
+        StatusText.Text = note.IsNotebook ? "읽기 전용 · 저장된 셀과 출력" : note.IsReadOnly ? "읽기 전용 · 앱과 함께 자동 업데이트" : "";
         StatusText.Visibility = note.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
         Editor.Text = note.Body;
         Editor.IsReadOnly = note.IsReadOnly;
@@ -225,6 +225,13 @@ public sealed partial class SideDocumentPane : UserControl
     private void RenderPreview()
     {
         if (!_previewReady) return;
+        if (_note.IsNotebook)
+        {
+            _previewEditSession = null;
+            _previewHtmlUpdater?.Update(MarkdownPreviewRenderer.RenderNotebook(_note.Path, _workspaceRoot,
+                _previewScrollY, _fontScale, _accentColor, _surfaceTheme));
+            return;
+        }
         _previewEditSession = _note.IsReadOnly ? null : new PreviewEditSession(Editor.Text);
         _previewHtmlUpdater?.Update(MarkdownPreviewRenderer.Render(
             Editor.Text,

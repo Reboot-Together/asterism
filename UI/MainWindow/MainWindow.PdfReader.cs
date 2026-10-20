@@ -126,16 +126,26 @@ public sealed partial class MainWindow
         var picker = new FileOpenPicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         picker.FileTypeFilter.Add(".pdf");
+        picker.FileTypeFilter.Add(".ipynb");
         StorageFile? file = await picker.PickSingleFileAsync();
         if (file is null) return;
         try
         {
+            if (NotebookDocumentService.IsNotebookFile(file.Path))
+            {
+                var notebook = _notebookRepository.Import(file.Path, destinationFolder);
+                ExpandFolder(Path.GetDirectoryName(notebook.Path)!);
+                RefreshNotes();
+                if (_pdfMode || _constellationMode) ShowDocumentMode();
+                SelectNoteInActiveDocument(notebook);
+                return;
+            }
             var pdf = _pdfRepository.Import(file.Path, destinationFolder);
             ExpandFolder(Path.GetDirectoryName(pdf.Path)!);
             RefreshNotes();
             await ShowPdfModeAsync(pdf.Path);
         }
-        catch (Exception exception) { await ShowMessage("PDF 가져오기 실패", exception.Message); }
+        catch (Exception exception) { await ShowMessage("자료 가져오기 실패", exception.Message); }
     }
 
     private async Task ShowPdfModeAsync(string path)

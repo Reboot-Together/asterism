@@ -48,11 +48,11 @@
               <TextBlock Text="자료" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="SemiBold" />
             </StackPanel>
             <Button Grid.Column="1" Content="TXT＋" Style="{StaticResource QuietButton}" Padding="6,3" MinWidth="0" Click="NewTextToRoot_Click" ToolTipService.ToolTip="저장소 최상단에 새 TXT 자료 만들기" />
-            <Button Grid.Column="2" Content="PDF＋" Style="{StaticResource QuietButton}" Padding="6,3" MinWidth="0" Click="ImportPdfToRoot_Click" ToolTipService.ToolTip="PDF를 저장소에 추가" />
+              <Button Grid.Column="2" Content="가져오기" Style="{StaticResource QuietButton}" Padding="6,3" MinWidth="0" Click="ImportPdfToRoot_Click" ToolTipService.ToolTip="PDF·IPYNB를 저장소에 추가" />
             <Button Grid.Column="3" Content="↻" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="Refresh_Click" />
             <Button Grid.Column="4" Content="‹" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="ExplorerCollapse_Click" ToolTipService.ToolTip="자료 탐색기 접기" />
           </Grid>
-          <TextBox x:Name="SearchBox" Grid.Row="1" Style="{StaticResource Field}" PlaceholderText="⌕  노트 본문·PDF 이름 검색" TextChanged="Search_TextChanged" />
+          <TextBox x:Name="SearchBox" Grid.Row="1" Style="{StaticResource Field}" PlaceholderText="⌕  자료 제목·본문 검색" TextChanged="Search_TextChanged" />
           <ListView x:Name="NoteList" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="NoteList_SelectionChanged" SelectionMode="Single" CanDragItems="True" DragItemsStarting="NoteList_DragItemsStarting" RightTapped="NoteList_RightTapped" ScrollViewer.VerticalScrollBarVisibility="Auto">
             <ListView.ItemContainerTransitions>
               <TransitionCollection />
@@ -92,6 +92,11 @@
                       <Canvas Width="16" Height="16">
                         <Path Data="M3,1.5 L9.5,1.5 L13,5 L13,14.5 L3,14.5 Z M9.5,1.5 L9.5,5 L13,5" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="0.82" />
                         <Path Data="M5,8 L11,8 M5,10.4 L11,10.4 M5,12.8 L9,12.8" Fill="Transparent" Stroke="{StaticResource MutedText}" StrokeThickness="1" StrokeStartLineCap="Round" Opacity="0.85" />
+                      </Canvas>
+                    </Viewbox>
+                    <Viewbox Grid.Column="2" Width="12" Height="12" Opacity="{x:Bind NotebookIconOpacity}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                      <Canvas Width="16" Height="16">
+                        <Path Data="M3,1.5 L13,1.5 L13,14.5 L3,14.5 Z M5,1.5 L5,14.5 M1.5,4 L4,4 M1.5,8 L4,8 M1.5,12 L4,12 M8,6 L6.5,8 L8,10 M10,6 L11.5,8 L10,10" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                       </Canvas>
                     </Viewbox>
                     <TextBlock Grid.Column="3" Text="{x:Bind DisplayName}" Height="14" VerticalAlignment="Center" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="Normal" Foreground="{StaticResource PrimaryText}" LineHeight="14" LineStackingStrategy="BlockLineHeight" TextTrimming="CharacterEllipsis" />
@@ -140,7 +145,7 @@
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
               <Border x:Name="ReadOnlyBadge" Visibility="Collapsed" Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="4" Padding="7,4">
-                <TextBlock Text="읽기 전용 · 자동 업데이트" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" />
+                <TextBlock x:Name="ReadOnlyBadgeText" Text="읽기 전용 · 자동 업데이트" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" />
               </Border>
               <Button Content="▥" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Click="OpenCurrentToSide_Click" ToolTipService.ToolTip="현재 노트를 옆에 열기 (최대 3개)" AutomationProperties.Name="현재 노트를 옆에 열기" />
             </StackPanel>
@@ -251,7 +256,7 @@
               <TextBlock x:Name="PdfTitleText" Text="PDF" FontWeight="SemiBold" FontSize="{Binding Ui, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" TextTrimming="CharacterEllipsis" />
               <TextBlock x:Name="PdfStatusText" Text="PDF 파일을 선택해 주세요." FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
-            <Button Grid.Column="1" Content="PDF 추가" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ChangePdf_Click" />
+            <Button Grid.Column="1" Content="자료 추가" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ChangePdf_Click" />
             <Button Grid.Column="2" Content="파일 위치" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="OpenPdfLocation_Click" />
             <Button Grid.Column="3" Content="닫기" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ClosePdf_Click" />
           </Grid>

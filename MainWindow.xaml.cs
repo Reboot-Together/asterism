@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     private readonly UiLayoutSettingsService _uiLayoutSettingsService = new();
     private readonly NoteRepository _repository;
     private readonly TextDocumentService _textRepository;
+    private readonly NotebookDocumentService _notebookRepository;
     private readonly PdfDocumentService _pdfRepository;
     private readonly NoteLinkService _linkService = new();
     private readonly NoteImageService _imageService = new();
@@ -60,6 +61,7 @@ public sealed partial class MainWindow : Window
     {
         _repository = new NoteRepository(_workspace.RootPath);
         _textRepository = new TextDocumentService(_workspace.RootPath);
+        _notebookRepository = new NotebookDocumentService(_workspace.RootPath);
         _pdfRepository = new PdfDocumentService(_workspace.RootPath);
         InitializeComponent();
         GraphCanvas.AddHandler(
@@ -116,7 +118,7 @@ public sealed partial class MainWindow : Window
         // Markdown and TXT are both editable knowledge resources.  Keeping them
         // in one index means wiki links, backlinks, semantic suggestions and the
         // constellation use the same source of truth regardless of extension.
-        _notes = [.. _repository.Load(), .. _textRepository.Load()];
+        _notes = [.. _repository.Load(), .. _textRepository.Load(), .. _notebookRepository.Load()];
         _pdfDocuments = _pdfRepository.Load();
         _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
         if (!_folderExpansionInitialized)
@@ -149,7 +151,7 @@ public sealed partial class MainWindow : Window
         var activePath = _pdfMode ? _currentPdfPath : activeNote?.Path;
         var preferredFolders = activePath is null
             ? []
-            : activeNote?.IsReadOnly == true
+            : activeNote?.Path.StartsWith("asterism-guide://", StringComparison.OrdinalIgnoreCase) == true
                 ? [BuiltInGuideService.FolderPath]
                 : _vaultTreeService.AncestorFolders(_workspace.RootPath, activePath);
         _folderExpansionService.EnforceExclusive(
@@ -245,7 +247,7 @@ public sealed partial class MainWindow : Window
 
     private void RevealNoteInTree(NoteInfo note)
     {
-        RevealVaultItemInTree(note.Path, note.IsReadOnly);
+        RevealVaultItemInTree(note.Path, note.Path.StartsWith("asterism-guide://", StringComparison.OrdinalIgnoreCase));
     }
 
     private void RevealVaultItemInTree(string path, bool isReadOnly = false)
@@ -575,7 +577,8 @@ public sealed partial class MainWindow : Window
     private void ShowEditorAndPreview()
     {
         var readOnly = _selected?.IsReadOnly == true;
-        DocumentKindText.Text = readOnly ? "GUIDE" : _selected?.IsPlainText == true ? "TEXT" : "NOTE";
+        DocumentKindText.Text = _selected?.IsNotebook == true ? "IPYNB" : readOnly ? "GUIDE" : _selected?.IsPlainText == true ? "TEXT" : "NOTE";
+        ReadOnlyBadgeText.Text = _selected?.IsNotebook == true ? "읽기 전용 · 저장된 셀과 출력" : "읽기 전용 · 자동 업데이트";
         ReadOnlyBadge.Visibility = readOnly ? Visibility.Visible : Visibility.Collapsed;
         TitleBox.IsReadOnly = readOnly;
         TitleBox.IsHitTestVisible = !readOnly;
@@ -708,6 +711,13 @@ public sealed partial class MainWindow : Window
     {
         if (!_previewReady) return;
         ClearPreviewHoverSelection();
+        if (_selected?.IsNotebook == true)
+        {
+            _previewEditSession = null;
+            _previewHtmlUpdater?.Update(MarkdownPreviewRenderer.RenderNotebook(_selected.Path, _workspace.RootPath,
+                CurrentPreviewScrollY(), _uiLayoutSettings.FontScale, CurrentAccent.CssColor, CurrentSurface.Key));
+            return;
+        }
         _previewEditSession = _selected is { IsReadOnly: false } ? new PreviewEditSession(Editor.Text) : null;
         _previewHtmlUpdater?.Update(MarkdownPreviewRenderer.Render(
             Editor.Text,

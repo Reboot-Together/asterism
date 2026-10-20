@@ -10,6 +10,8 @@
     <Compile Include="..\Features\Documents\PdfDocumentService.cs" Link="PdfDocumentService.cs" />
     <Compile Include="..\Features\Documents\PdfAnnotationService.cs" Link="PdfAnnotationService.cs" />
     <Compile Include="..\Features\Documents\TextDocumentService.cs" Link="TextDocumentService.cs" />
+    <Compile Include="..\Features\Documents\NotebookDocumentService.cs" Link="NotebookDocumentService.cs" />
+    <Compile Include="..\Rendering\NotebookPreviewRenderer.cs" Link="NotebookPreviewRenderer.cs" />
     <Compile Include="..\Features\Semantic\SemanticTextChunker.cs" Link="SemanticTextChunker.cs" />
     <Compile Include="..\Features\Semantic\LocalEmbeddingModel.cs" Link="LocalEmbeddingModel.cs" />
     <Compile Include="..\Features\Semantic\SemanticIndexStore.cs" Link="SemanticIndexStore.cs" />
